@@ -74,16 +74,16 @@ class ParseController extends GetxController {
         return;
       }
       SmartDialog.showLoading(msg: "");
-      var playUrls =
+      var playUrl =
           await site.liveSite.getPlayUrls(detail: detail, quality: result);
       SmartDialog.dismiss(status: SmartStatus.loading);
       await Get.dialog(SimpleDialog(
         title: const Text("选择线路"),
-        children: playUrls
+        children: playUrl.urls
             .map(
               (e) => ListTile(
                 title: Text(
-                  "线路${playUrls.indexOf(e) + 1}",
+                  "线路${playUrl.urls.indexOf(e) + 1}",
                 ),
                 subtitle: Text(
                   e,
@@ -124,6 +124,10 @@ class ParseController extends GetxController {
 
     if (url.contains("douyu.com")) {
       var regExp = RegExp(r"douyu\.com/([\d|\w]+)");
+      // 适配 topic_url
+      if(url.contains("topic")){
+        regExp = RegExp(r"[?&]rid=([\d]+)");
+      }
       id = regExp.firstMatch(url)?.group(1) ?? "";
 
       return [id, Sites.allSites[Constant.kDouyu]!];

@@ -7,7 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:ns_danmaku/ns_danmaku.dart';
+import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/app/constant.dart';
@@ -72,6 +72,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   /// 线路数据
   RxList<String> playUrls = RxList<String>();
 
+  Map<String, String>? playHeaders;
+
   /// 当前线路
   var currentLineIndex = -1;
   var currentLineInfo = "".obs;
@@ -100,6 +102,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   /// 直播间加载失败
   var loadError = false.obs;
   Error? error;
+
+  // 开播时长状态变量
+  var liveDuration = "00:00:00".obs;
+  Timer? _liveDurationTimer;
 
   @override
   void onInit() {
@@ -232,7 +238,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       }
 
       addDanmaku([
-        DanmakuItem(
+        DanmakuContentItem(
           msg.message,
           color: Color.fromARGB(
             255,
@@ -276,6 +282,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     try {
       SmartDialog.showLoading(msg: "");
       loadError.value = false;
+      error = null;
+      update();
       addSysMsg("正在读取直播间信息");
       detail.value = await site.liveSite.getRoomDetail(roomId: roomId);
 
@@ -309,6 +317,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       getSuperChatMessage();
 
       addHistory();
+      // 确认房间关注状态
+      followed.value = DBService.instance.getFollowExist("${site.id}_$roomId");
       online.value = detail.value!.online;
       liveStatus.value = detail.value!.status || detail.value!.isRecord;
       if (liveStatus.value) {
@@ -320,6 +330,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       addSysMsg("开始连接弹幕服务器");
       initDanmau();
       liveDanmaku.start(detail.value?.danmakuData);
+      startLiveDurationTimer(); // 启动开播时长定时器
     } catch (e) {
       Log.logPrint(e);
       //SmartDialog.showToast(e.toString());
@@ -385,16 +396,17 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     currentLineIndex = -1;
     var playUrl = await site.liveSite
         .getPlayUrls(detail: detail.value!, quality: qualites[currentQuality]);
-    if (playUrl.isEmpty) {
+    if (playUrl.urls.isEmpty) {
       SmartDialog.showToast("无法读取播放地址");
       return;
     }
-    playUrls.value = playUrl;
+    playUrls.value = playUrl.urls;
+    playHeaders = playUrl.headers;
     currentLineIndex = 0;
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     //重置错误次数
     mediaErrorRetryCount = 0;
-    setPlayer();
+    initPlaylist();
   }
 
   void changePlayLine(int index) {
@@ -404,38 +416,29 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     setPlayer();
   }
 
+  void initPlaylist() async {
+    currentLineInfo.value = "线路${currentLineIndex + 1}";
+    errorMsg.value = "";
+
+    final mediaList = playUrls.map((url) {
+      var finalUrl = url;
+      if (AppSettingsController.instance.playerForceHttps.value) {
+        finalUrl = finalUrl.replaceAll("http://", "https://");
+      }
+      return Media(finalUrl, httpHeaders: playHeaders);
+    }).toList();
+
+    // 初始化播放器并设置 ao 参数
+    await initializePlayer();
+
+    await player.open(Playlist(mediaList));
+  }
+
   void setPlayer() async {
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
-    Map<String, String> headers = {};
-    if (site.id == Constant.kBiliBili) {
-      headers = {
-        "referer": "https://live.bilibili.com",
-        "user-agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36 Edg/115.0.1901.188"
-      };
-    } else if (site.id == Constant.kHuya) {
-      // fix #594
-      var currentTs = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      headers = {
-        //"referer": "https://m.huya.com",
-        "user-agent": "HYSDK(Windows, $currentTs)"
-      };
-    }
 
-    var playurl = playUrls[currentLineIndex];
-    if (AppSettingsController.instance.playerForceHttps.value) {
-      playurl = playurl.replaceAll("http://", "https://");
-    }
-
-    player.open(
-      Media(
-        playurl,
-        httpHeaders: headers,
-      ),
-    );
-
-    Log.d("播放链接\r\n：$playurl");
+    await player.jump(currentLineIndex);
   }
 
   @override
@@ -571,7 +574,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     if (detail.value == null) {
       return;
     }
-    Share.share(detail.value!.url);
+    SharePlus.instance.share(ShareParams(uri: Uri.parse(detail.value!.url)));
   }
 
   void copyUrl() {
@@ -580,6 +583,22 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     }
     Utils.copyToClipboard(detail.value!.url);
     SmartDialog.showToast("已复制直播间链接");
+  }
+
+  /// 复制新生成的直播流
+  void copyPlayUrl() async {
+    // 未开播不复制
+    if (!liveStatus.value) {
+      return;
+    }
+    var playUrl = await site.liveSite
+        .getPlayUrls(detail: detail.value!, quality: qualites[currentQuality]);
+    if (playUrl.urls.isEmpty) {
+      SmartDialog.showToast("无法读取播放地址");
+      return;
+    }
+    Utils.copyToClipboard(playUrl.urls.first);
+    SmartDialog.showToast("已复制播放直链");
   }
 
   /// 底部打开播放器设置
@@ -636,21 +655,23 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   void showQualitySheet() {
     Utils.showBottomSheet(
       title: "切换清晰度",
-      child: ListView.builder(
-        itemCount: qualites.length,
-        itemBuilder: (_, i) {
-          var item = qualites[i];
-          return RadioListTile(
-            value: i,
-            groupValue: currentQuality,
-            title: Text(item.quality),
-            onChanged: (e) {
-              Get.back();
-              currentQuality = i;
-              getPlayUrl();
-            },
-          );
+      child: RadioGroup(
+        groupValue: currentQuality,
+        onChanged: (e) {
+          Get.back();
+          currentQuality = e ?? 0;
+          getPlayUrl();
         },
+        child: ListView.builder(
+          itemCount: qualites.length,
+          itemBuilder: (_, i) {
+            var item = qualites[i];
+            return RadioListTile(
+              value: i,
+              title: Text(item.quality),
+            );
+          },
+        ),
       ),
     );
   }
@@ -658,24 +679,26 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   void showPlayUrlsSheet() {
     Utils.showBottomSheet(
       title: "切换线路",
-      child: ListView.builder(
-        itemCount: playUrls.length,
-        itemBuilder: (_, i) {
-          return RadioListTile(
-            value: i,
-            groupValue: currentLineIndex,
-            title: Text("线路${i + 1}"),
-            secondary: Text(
-              playUrls[i].contains(".flv") ? "FLV" : "HLS",
-            ),
-            onChanged: (e) {
-              Get.back();
-              //currentLineIndex = i;
-              //setPlayer();
-              changePlayLine(i);
-            },
-          );
+      child: RadioGroup(
+        groupValue: currentLineIndex,
+        onChanged: (e) {
+          Get.back();
+          //currentLineIndex = i;
+          //setPlayer();
+          changePlayLine(e ?? 0);
         },
+        child: ListView.builder(
+          itemCount: playUrls.length,
+          itemBuilder: (_, i) {
+            return RadioListTile(
+              value: i,
+              title: Text("线路${i + 1}"),
+              secondary: Text(
+                playUrls[i].contains(".flv") ? "FLV" : "HLS",
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -684,60 +707,42 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     Utils.showBottomSheet(
       title: "画面尺寸",
       child: Obx(
-        () => ListView(
-          padding: AppStyle.edgeInsetsV12,
-          children: [
-            RadioListTile(
-              value: 0,
-              title: const Text("适应"),
-              visualDensity: VisualDensity.compact,
-              groupValue: AppSettingsController.instance.scaleMode.value,
-              onChanged: (e) {
-                AppSettingsController.instance.setScaleMode(e ?? 0);
-                updateScaleMode();
-              },
-            ),
-            RadioListTile(
-              value: 1,
-              title: const Text("拉伸"),
-              visualDensity: VisualDensity.compact,
-              groupValue: AppSettingsController.instance.scaleMode.value,
-              onChanged: (e) {
-                AppSettingsController.instance.setScaleMode(e ?? 1);
-                updateScaleMode();
-              },
-            ),
-            RadioListTile(
-              value: 2,
-              title: const Text("铺满"),
-              visualDensity: VisualDensity.compact,
-              groupValue: AppSettingsController.instance.scaleMode.value,
-              onChanged: (e) {
-                AppSettingsController.instance.setScaleMode(e ?? 2);
-                updateScaleMode();
-              },
-            ),
-            RadioListTile(
-              value: 3,
-              title: const Text("16:9"),
-              visualDensity: VisualDensity.compact,
-              groupValue: AppSettingsController.instance.scaleMode.value,
-              onChanged: (e) {
-                AppSettingsController.instance.setScaleMode(e ?? 3);
-                updateScaleMode();
-              },
-            ),
-            RadioListTile(
-              value: 4,
-              title: const Text("4:3"),
-              visualDensity: VisualDensity.compact,
-              groupValue: AppSettingsController.instance.scaleMode.value,
-              onChanged: (e) {
-                AppSettingsController.instance.setScaleMode(e ?? 4);
-                updateScaleMode();
-              },
-            ),
-          ],
+        () => RadioGroup(
+          groupValue: AppSettingsController.instance.scaleMode.value,
+          onChanged: (e) {
+            AppSettingsController.instance.setScaleMode(e ?? 0);
+            updateScaleMode();
+          },
+          child: ListView(
+            padding: AppStyle.edgeInsetsV12,
+            children: const [
+              RadioListTile(
+                value: 0,
+                title: Text("适应"),
+                visualDensity: VisualDensity.compact,
+              ),
+              RadioListTile(
+                value: 1,
+                title: Text("拉伸"),
+                visualDensity: VisualDensity.compact,
+              ),
+              RadioListTile(
+                value: 2,
+                title: Text("铺满"),
+                visualDensity: VisualDensity.compact,
+              ),
+              RadioListTile(
+                value: 3,
+                title: Text("16:9"),
+                visualDensity: VisualDensity.compact,
+              ),
+              RadioListTile(
+                value: 4,
+                title: Text("4:3"),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1015,6 +1020,37 @@ ${error?.stackTrace}''');
     }
   }
 
+  // 用于启动开播时长计算和更新的函数
+  void startLiveDurationTimer() {
+    // 如果不是直播状态或者 showTime 为空，则不启动定时器
+    if (!(detail.value?.status ?? false) || detail.value?.showTime == null) {
+      liveDuration.value = "00:00:00"; // 未开播时显示 00:00:00
+      _liveDurationTimer?.cancel();
+      return;
+    }
+
+    try {
+      int startTimeStamp = int.parse(detail.value!.showTime!);
+      // 取消之前的定时器
+      _liveDurationTimer?.cancel();
+      // 创建新的定时器，每秒更新一次
+      _liveDurationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        int currentTimeStamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        int durationInSeconds = currentTimeStamp - startTimeStamp;
+
+        int hours = durationInSeconds ~/ 3600;
+        int minutes = (durationInSeconds % 3600) ~/ 60;
+        int seconds = durationInSeconds % 60;
+
+        String formattedDuration =
+            '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+        liveDuration.value = formattedDuration;
+      });
+    } catch (e) {
+      liveDuration.value = "--:--:--"; // 错误时显示 --:--:--
+    }
+  }
+
   @override
   void onClose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -1023,6 +1059,7 @@ ${error?.stackTrace}''');
 
     liveDanmaku.stop();
     danmakuController = null;
+    _liveDurationTimer?.cancel(); // 页面关闭时取消定时器
     super.onClose();
   }
 }

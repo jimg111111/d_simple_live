@@ -9,6 +9,7 @@ import 'package:simple_live_core/src/interface/live_site.dart';
 import 'package:simple_live_core/src/model/live_anchor_item.dart';
 import 'package:simple_live_core/src/model/live_category.dart';
 import 'package:simple_live_core/src/model/live_message.dart';
+import 'package:simple_live_core/src/model/live_play_url.dart';
 import 'package:simple_live_core/src/model/live_room_item.dart';
 import 'package:simple_live_core/src/model/live_search_result.dart';
 import 'package:simple_live_core/src/model/live_room_detail.dart';
@@ -32,14 +33,25 @@ class BiliBiliSite implements LiveSite {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0";
   static const String kDefaultReferer = "https://live.bilibili.com/";
 
-  Map<String, String> getHeader() {
+  String buvid3 = "";
+  String buvid4 = "";
+  String accessId = "";
+  Future<Map<String, String>> getHeader() async {
+    if (buvid3.isEmpty) {
+      var buvidInfo = await getBuvid();
+      buvid3 = buvidInfo["b_3"] ?? "";
+      buvid4 = buvidInfo["b_4"] ?? "";
+    }
     return cookie.isEmpty
         ? {
             "user-agent": kDefaultUserAgent,
             "referer": kDefaultReferer,
+            "cookie": 'buvid3=$buvid3;buvid4=$buvid4;',
           }
         : {
-            "cookie": cookie,
+            "cookie": cookie.contains("buvid3")
+                ? cookie
+                : "$cookie;buvid3=$buvid3;buvid4=$buvid4;",
             "user-agent": kDefaultUserAgent,
             "referer": kDefaultReferer,
           };
@@ -54,7 +66,7 @@ class BiliBiliSite implements LiveSite {
         "need_entrance": 1,
         "parent_id": 0,
       },
-      header: getHeader(),
+      header: await getHeader(),
     );
     for (var item in result["data"]) {
       List<LiveSubCategory> subs = [];
@@ -80,16 +92,18 @@ class BiliBiliSite implements LiveSite {
   @override
   Future<LiveCategoryResult> getCategoryRooms(LiveSubCategory category,
       {int page = 1}) async {
+    const baseUrl =
+        "https://api.live.bilibili.com/xlive/web-interface/v1/second/getList";
+
+    var url =
+        "$baseUrl?platform=web&parent_area_id=${category.parentId}&area_id=${category.id}&sort_type=&page=$page&w_webid=${await getAccessId()}";
+
+    var queryParams = await getWbiSign(url);
+
     var result = await HttpClient.instance.getJson(
-      "https://api.live.bilibili.com/xlive/web-interface/v1/second/getList",
-      queryParameters: {
-        "platform": "web",
-        "parent_area_id": category.parentId,
-        "area_id": category.id,
-        "sort_type": "",
-        "page": page
-      },
-      header: getHeader(),
+      baseUrl,
+      queryParameters: queryParams,
+      header: await getHeader(),
     );
 
     var hasMore = result["data"]["has_more"] == 1;
@@ -120,7 +134,7 @@ class BiliBiliSite implements LiveSite {
         "codec": "0,1",
         "platform": "web",
       },
-      header: getHeader(),
+      header: await getHeader(),
     );
     var qualitiesMap = <int, String>{};
     for (var item in result["data"]["playurl_info"]["playurl"]["g_qn_desc"]) {
@@ -140,7 +154,7 @@ class BiliBiliSite implements LiveSite {
   }
 
   @override
-  Future<List<String>> getPlayUrls(
+  Future<LivePlayUrl> getPlayUrls(
       {required LiveRoomDetail detail,
       required LivePlayQuality quality}) async {
     List<String> urls = [];
@@ -154,7 +168,7 @@ class BiliBiliSite implements LiveSite {
         "platform": "web",
         "qn": quality.data,
       },
-      header: getHeader(),
+      header: await getHeader(),
     );
     var streamList = result["data"]["playurl_info"]["playurl"]["stream"];
     for (var streamItem in streamList) {
@@ -180,20 +194,28 @@ class BiliBiliSite implements LiveSite {
         return -1;
       }
     });
-    return urls;
+    return LivePlayUrl(
+      urls: urls,
+      headers: {
+        "referer": "https://live.bilibili.com",
+        "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36 Edg/115.0.1901.188"
+      },
+    );
   }
 
   @override
   Future<LiveCategoryResult> getRecommendRooms({int page = 1}) async {
+    const baseUrl =
+        "https://api.live.bilibili.com/xlive/web-interface/v1/second/getListByArea";
+    var url = "$baseUrl?platform=web&sort=online&page_size=30&page=$page";
+
+    var queryParams = await getWbiSign(url);
+
     var result = await HttpClient.instance.getJson(
-      "https://api.live.bilibili.com/xlive/web-interface/v1/second/getListByArea",
-      queryParameters: {
-        "platform": "web",
-        "sort": "online",
-        "page_size": 30,
-        "page": page
-      },
-      header: getHeader(),
+      baseUrl,
+      queryParameters: queryParams,
+      header: await getHeader(),
     );
 
     var hasMore = (result["data"]["list"] as List).isNotEmpty;
@@ -215,18 +237,47 @@ class BiliBiliSite implements LiveSite {
   Future<LiveRoomDetail> getRoomDetail({required String roomId}) async {
     var roomInfo = await getRoomInfo(roomId: roomId);
     var realRoomId = roomInfo["room_info"]["room_id"].toString();
+
+    const danmuInfoBaseUrl =
+        "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo";
+    var danmuInfoUrl = "$danmuInfoBaseUrl?id=$realRoomId";
+    var queryParams = await getWbiSign(danmuInfoUrl);
     var roomDanmakuResult = await HttpClient.instance.getJson(
-      "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo",
-      queryParameters: {
-        "id": realRoomId,
-      },
-      header: getHeader(),
+      danmuInfoBaseUrl,
+      queryParameters: queryParams,
+      header: await getHeader(),
     );
     List<String> serverHosts = (roomDanmakuResult["data"]["host_list"] as List)
         .map<String>((e) => e["host"].toString())
         .toList();
 
-    var buvid = await getBuvid();
+    //var buvid = await getBuvid();
+    // 从 roomInfo 中提取 live_start_time
+    String? liveStartTime =
+        roomInfo["room_info"]?["live_start_time"]?.toString();
+
+    // 计算开播时长并打印到控制台 (参考斗鱼的实现)
+    if (liveStartTime != null &&
+        liveStartTime.isNotEmpty &&
+        liveStartTime != "0") {
+      // 检查是否为0，0可能表示未开播或无此信息
+      try {
+        int startTimeStamp = int.parse(liveStartTime);
+        int currentTimeStamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        int durationInSeconds = currentTimeStamp - startTimeStamp;
+
+        int hours = durationInSeconds ~/ 3600;
+        int minutes = (durationInSeconds % 3600) ~/ 60;
+        int seconds = durationInSeconds % 60;
+
+        String formattedDuration =
+            '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+        print('Bilibili直播间 $roomId 开播时长: $formattedDuration');
+      } catch (e) {
+        print('计算 Bilibili 开播时长出错: $e');
+      }
+    }
+
     return LiveRoomDetail(
       roomId: realRoomId,
       title: roomInfo["room_info"]["title"].toString(),
@@ -245,9 +296,10 @@ class BiliBiliSite implements LiveSite {
         serverHost: serverHosts.isNotEmpty
             ? serverHosts.first
             : "broadcastlv.chat.bilibili.com",
-        buvid: buvid,
+        buvid: buvid3,
         cookie: cookie,
       ),
+      showTime: liveStartTime, // 将 liveStartTime 赋值给 showTime 字段
     );
   }
 
@@ -258,8 +310,9 @@ class BiliBiliSite implements LiveSite {
     var result = await HttpClient.instance.getJson(
       "https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByRoom",
       queryParameters: queryParams,
-      header: getHeader(),
+      header: await getHeader(),
     );
+    print("【B站接口返回】roomId=$roomId, result=$result");
     return result["data"];
   }
 
@@ -278,11 +331,7 @@ class BiliBiliSite implements LiveSite {
         "single_column": 0,
         "page": page
       },
-      header: {
-        "cookie": cookie.isEmpty ? 'buvid3=infoc;' : cookie,
-        "user-agent": kDefaultUserAgent,
-        "referer": kDefaultReferer,
-      },
+      header: await getHeader(),
     );
 
     var items = <LiveRoomItem>[];
@@ -317,11 +366,7 @@ class BiliBiliSite implements LiveSite {
         "single_column": 0,
         "page": page
       },
-      header: {
-        "cookie": cookie.isEmpty ? 'buvid3=infoc;' : cookie,
-        "user-agent": kDefaultUserAgent,
-        "referer": kDefaultReferer,
-      },
+      header: await getHeader(),
     );
 
     var items = <LiveAnchorItem>[];
@@ -347,7 +392,7 @@ class BiliBiliSite implements LiveSite {
       queryParameters: {
         "room_id": roomId,
       },
-      header: getHeader(),
+      header: await getHeader(),
     );
     return (asT<int?>(result["data"]["live_status"]) ?? 0) == 1;
   }
@@ -360,7 +405,7 @@ class BiliBiliSite implements LiveSite {
       queryParameters: {
         "room_id": roomId,
       },
-      header: getHeader(),
+      header: await getHeader(),
     );
     List<LiveSuperChatMessage> ls = [];
     for (var item in result["data"]?["list"] ?? []) {
@@ -383,20 +428,38 @@ class BiliBiliSite implements LiveSite {
     return ls;
   }
 
-  Future<String> getBuvid() async {
+  /// 获取 buvid3 和 buvid4
+  /// 返回buvid3和buvid4
+  /// ``` json
+  /// {
+  ///   "b_3": "buvid3",
+  ///   "b_4": "buvid4",
+  /// }
+  /// ```
+  Future<Map> getBuvid() async {
     try {
       if (cookie.contains("buvid3")) {
-        return RegExp(r"buvid3=(.*?);").firstMatch(cookie)?.group(1) ?? "";
+        return {
+          "b_3": RegExp(r"buvid3=(.*?);").firstMatch(cookie)?.group(1) ?? "",
+          "b_4": RegExp(r"buvid4=(.*?);").firstMatch(cookie)?.group(1) ?? "",
+        };
       }
 
       var result = await HttpClient.instance.getJson(
         "https://api.bilibili.com/x/frontend/finger/spi",
         queryParameters: {},
-        header: getHeader(),
+        header: {
+          "user-agent": kDefaultUserAgent,
+          "referer": kDefaultReferer,
+          "cookie": cookie,
+        },
       );
-      return result["data"]["b_3"].toString();
+      return result["data"];
     } catch (e) {
-      return "";
+      return {
+        "b_3": "",
+        "b_4": "",
+      };
     }
   }
 
@@ -475,7 +538,7 @@ class BiliBiliSite implements LiveSite {
     // 获取最新的 img_key 和 sub_key
     var resp = await HttpClient.instance.getJson(
       'https://api.bilibili.com/x/web-interface/nav',
-      header: getHeader(),
+      header: await getHeader(),
     );
 
     var imgUrl = resp["data"]["wbi_img"]["img_url"].toString();
@@ -524,5 +587,24 @@ class BiliBiliSite implements LiveSite {
     var wbiSign = md5.convert(utf8.encode("$query$mixinKey")).toString();
     queryParams["w_rid"] = wbiSign;
     return queryParams;
+  }
+
+  Future<String> getAccessId() async {
+    if (accessId.isNotEmpty) {
+      return accessId;
+    }
+
+    // 获取 access_id
+    var resp = await HttpClient.instance.getText(
+      "https://live.bilibili.com/lol",
+      queryParameters: {},
+      header: await getHeader(),
+    );
+    var id = RegExp(r'"access_id":"(.*?)"')
+        .firstMatch(resp)
+        ?.group(1)
+        ?.replaceAll("\\", "");
+    accessId = id ?? "";
+    return accessId;
   }
 }

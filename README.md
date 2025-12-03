@@ -1,4 +1,4 @@
-
+> ### ⚠ 本项目不提供Release安装包，请自行编译后运行测试。
 
 
 <p align="center">
@@ -31,14 +31,7 @@
 - [x] Windows `BETA`
 - [x] MacOS `BETA`
 - [x] Linux `BETA`
-- [x] Android TV `BETA` [说明](https://github.com/xiaoyaocz/dart_simple_live/issues/338)
-
-请到[Releases](https://github.com/xiaoyaocz/dart_simple_live/releases)下载最新版本，iOS请下载ipa文件自行签名安装
-
-如果想体验最新功能，可前往[Actions](https://github.com/xiaoyaocz/dart_simple_live/actions)下载自动打包的开发版本
-
-Windows建议下载UWP版[聚合直播](https://www.microsoft.com/store/apps/9N1TWG2G84VD)，体验会更好
-
+- [x] Android TV `BETA`
 
 ## 项目结构
 
@@ -46,6 +39,10 @@ Windows建议下载UWP版[聚合直播](https://www.microsoft.com/store/apps/9N1
 - `simple_live_console` 基于simple_live_core的控制台程序。
 - `simple_live_app` 基于核心库实现的Flutter APP客户端。
 - `simple_live_tv_app` 基于核心库实现的Flutter Android TV客户端。
+
+## 环境
+
+Flutter : `3.38`
 
 ## 参考及引用
 
@@ -74,3 +71,13 @@ Windows建议下载UWP版[聚合直播](https://www.microsoft.com/store/apps/9N1
 本项目仅用于学习交流编程技术，严禁将本项目用于商业目的。如有任何商业行为，均与本项目无关。
 
 如果本项目存在侵犯您的合法权益的情况，请及时与开发者联系，开发者将会及时删除有关内容。
+
+## Star History
+
+<a href="https://www.star-history.com/#xiaoyaocz/dart_simple_live&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=xiaoyaocz/dart_simple_live&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=xiaoyaocz/dart_simple_live&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=xiaoyaocz/dart_simple_live&type=Date" />
+ </picture>
+</a>

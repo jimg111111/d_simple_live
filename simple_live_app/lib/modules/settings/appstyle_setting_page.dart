@@ -26,46 +26,40 @@ class AppstyleSettingPage extends GetView<AppSettingsController> {
           ),
           SettingsCard(
             child: Obx(
-              () => Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  RadioListTile<int>(
-                    title: const Text(
-                      "跟随系统",
+              () => RadioGroup(
+                groupValue: controller.themeMode.value,
+                onChanged: (e) {
+                  controller.setTheme(e ?? 0);
+                },
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<int>(
+                      title: Text(
+                        "跟随系统",
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      value: 0,
+                      contentPadding: AppStyle.edgeInsetsH12,
                     ),
-                    visualDensity: VisualDensity.compact,
-                    value: 0,
-                    contentPadding: AppStyle.edgeInsetsH12,
-                    groupValue: controller.themeMode.value,
-                    onChanged: (e) {
-                      controller.setTheme(e ?? 0);
-                    },
-                  ),
-                  RadioListTile<int>(
-                    title: const Text(
-                      "浅色模式",
+                    RadioListTile<int>(
+                      title: Text(
+                        "浅色模式",
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      value: 1,
+                      contentPadding: AppStyle.edgeInsetsH12,
                     ),
-                    visualDensity: VisualDensity.compact,
-                    value: 1,
-                    contentPadding: AppStyle.edgeInsetsH12,
-                    groupValue: controller.themeMode.value,
-                    onChanged: (e) {
-                      controller.setTheme(e ?? 1);
-                    },
-                  ),
-                  RadioListTile<int>(
-                    title: const Text(
-                      "深色模式",
+                    RadioListTile<int>(
+                      title: Text(
+                        "深色模式",
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      value: 2,
+                      contentPadding: AppStyle.edgeInsetsH12,
                     ),
-                    visualDensity: VisualDensity.compact,
-                    value: 2,
-                    contentPadding: AppStyle.edgeInsetsH12,
-                    groupValue: controller.themeMode.value,
-                    onChanged: (e) {
-                      controller.setTheme(e ?? 2);
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -110,7 +104,7 @@ class AppstyleSettingPage extends GetView<AppSettingsController> {
                             .map(
                               (e) => GestureDetector(
                                 onTap: () {
-                                  controller.setStyleColor(e.v);
+                                  controller.setStyleColor(e.toARGB32());
                                   Get.forceAppUpdate();
                                 },
                                 child: Container(
@@ -128,10 +122,10 @@ class AppstyleSettingPage extends GetView<AppSettingsController> {
                                     () => Center(
                                       child: Icon(
                                         Icons.check,
-                                        color:
-                                            controller.styleColor.value == e.v
-                                                ? Colors.white
-                                                : Colors.transparent,
+                                        color: controller.styleColor.value ==
+                                                e.toARGB32()
+                                            ? Colors.white
+                                            : Colors.transparent,
                                       ),
                                     ),
                                   ),
@@ -151,14 +145,14 @@ class AppstyleSettingPage extends GetView<AppSettingsController> {
   }
 }
 
-extension ColorExt on Color {
-  static int _floatToInt8(double x) {
-    return (x * 255.0).round() & 0xff;
-  }
+// extension ColorExt on Color {
+//   static int _floatToInt8(double x) {
+//     return (x * 255.0).round() & 0xff;
+//   }
 
-  int get v =>
-      _floatToInt8(a) << 24 |
-      _floatToInt8(r) << 16 |
-      _floatToInt8(g) << 8 |
-      _floatToInt8(b) << 0;
-}
+//   int get v =>
+//       _floatToInt8(a) << 24 |
+//       _floatToInt8(r) << 16 |
+//       _floatToInt8(g) << 8 |
+//       _floatToInt8(b) << 0;
+// }

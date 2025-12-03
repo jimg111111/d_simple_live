@@ -105,6 +105,9 @@ class LocalStorageService extends GetxService {
   /// 自动全屏
   static const String kAutoFullScreen = "AutoFullScreen";
 
+  /// 显示SC
+  static const String kPlayerShowSuperChat = "PlayerShowSuperChat";
+
   /// 播放器音量
   static const String kPlayerVolume = "PlayerVolume";
 
@@ -113,6 +116,9 @@ class LocalStorageService extends GetxService {
 
   /// 哔哩哔哩cookie
   static const String kBilibiliCookie = "BilibiliCookie";
+
+  /// 抖音cookie
+  static const String kDouyinCookie = "DouyinCookie";
 
   ///主题色
   static const String kStyleColor = "kStyleColor";
@@ -135,6 +141,9 @@ class LocalStorageService extends GetxService {
   /// 视频硬件解码器
   static const String kVideoHardwareDecoder = "VideoHardwareDecoder";
 
+  /// 音频输出驱动
+  static const String kAudioOutputDriver = "AudioOutputDriver";
+
   /// 开启自动更新关注
   static const String kAutoUpdateFollowEnable = "AutoUpdateFollowEnable";
 
@@ -143,6 +152,21 @@ class LocalStorageService extends GetxService {
 
   /// 开启多线程更新关注
   static const String kUpdateFollowThreadCount = "UpdateFollowThreadCount";
+
+  /// WebDAV_服务器地址
+  static const String kWebDAVUri = "WebDAVUri";
+
+  /// WebDAV_登录账号
+  static const String kWebDAVUser = "WebDAVUser";
+
+  /// WebDAV_登录密码
+  static const String kWebDAVPassword = "kWebDAVPassword";
+
+  /// WebDAV_最后一次上传时间
+  static const String kWebDAVLastUploadTime = "kWebDAVLastUploadTime";
+
+  /// WebDAV_最后一次备份时间
+  static const String kWebDAVLastRecoverTime = "kWebDAVLastRecoverTime";
 
   late Box settingsBox;
   late Box<String> shieldBox;

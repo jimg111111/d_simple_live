@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-
+import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -29,6 +29,28 @@ class OtherSettingsController extends BaseController {
     "null": "null",
     "libmpv": "libmpv",
     "mediacodec_embed": "mediacodec_embed (Android only)",
+  };
+
+  var audioOutputDrivers = {
+    "null": "null (No audio output)",
+    "pulse": "pulse (Linux, uses PulseAudio)",
+    "pipewire": "pipewire (Linux, via Pulse compatibility or native)",
+    "alsa": "alsa (Linux only)",
+    "oss": "oss (Linux only)",
+    "jack": "jack (Linux/macOS, low-latency audio)",
+    "directsound": "directsound (Windows only)",
+    "wasapi": "wasapi (Windows only)",
+    "winmm": "winmm (Windows only, legacy API)",
+    "audiounit": "audiounit (iOS only)",
+    "coreaudio": "coreaudio (macOS only)",
+    "opensles": "opensles (Android only)",
+    "audiotrack": "audiotrack (Android only)",
+    "aaudio": "aaudio (Android only)",
+    "pcm": "pcm (Cross-platform)",
+    "sdl": "sdl (Cross-platform, via SDL library)",
+    "openal": "openal (Cross-platform, OpenAL backend)",
+    "libao": "libao (Cross-platform, uses libao library)",
+    "auto": "auto (Not available)"
   };
 
   var hardwareDecoder = {
@@ -112,7 +134,9 @@ class OtherSettingsController extends BaseController {
   }
 
   void shareLogFile(LogFileModel item) {
-    Share.shareXFiles([XFile(item.path)]);
+    SharePlus.instance.share(ShareParams(
+      files: [XFile(item.path)],
+    ));
   }
 
   void saveLogFile(LogFileModel item) async {
@@ -120,6 +144,7 @@ class OtherSettingsController extends BaseController {
       allowedExtensions: ['log'],
       type: FileType.custom,
       fileName: item.name,
+      bytes: Uint8List(0),
     );
     if (filePath != null) {
       var file = File(item.path);
@@ -130,30 +155,42 @@ class OtherSettingsController extends BaseController {
 
   void exportConfig() async {
     try {
-      var config = LocalStorageService.instance.settingsBox.toMap();
-      var shield = LocalStorageService.instance.shieldBox.toMap();
+      // 组装数据
       var data = {
         "type": "simple_live",
         "platform": Platform.operatingSystem,
         "version": 1,
         "time": DateTime.now().millisecondsSinceEpoch,
-        "config": config,
-        "shield": shield
+        "config": LocalStorageService.instance.settingsBox.toMap(),
+        "shield": LocalStorageService.instance.shieldBox.toMap(),
       };
 
-      var filePath = await FilePicker.platform.saveFile(
+      var bytes = Uint8List.fromList(utf8.encode(jsonEncode(data)));
+
+      // FilePicker 直接写入
+      var inlineSave = Platform.isAndroid || Platform.isIOS || kIsWeb;
+
+      var path = await FilePicker.platform.saveFile(
         allowedExtensions: ['json'],
         type: FileType.custom,
         fileName: "simple_live_config.json",
+        bytes: inlineSave ? bytes : null,
       );
-      if (filePath != null) {
-        var file = File(filePath);
-        await file.writeAsString(jsonEncode(data));
-        SmartDialog.showToast("保存成功");
+
+      if (path == null && !kIsWeb) {
+        SmartDialog.showToast("保存取消");
+        return;
       }
+
+      // 桌面平台需要手动写入
+      if (!inlineSave && path != null) {
+        await File(path).writeAsBytes(bytes);
+      }
+
+      SmartDialog.showToast("保存成功");
     } catch (e) {
       Log.logPrint(e);
-      SmartDialog.showToast("导入失败:$e");
+      SmartDialog.showToast("导出失败:$e");
     }
   }
 

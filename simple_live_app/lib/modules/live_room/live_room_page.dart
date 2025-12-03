@@ -186,6 +186,7 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                 icon: const Icon(Remix.refresh_line),
                 label: const Text("刷新"),
               ),
+              AppStyle.hGap4,
               Obx(
                 () => controller.followed.value
                     ? TextButton.icon(
@@ -222,10 +223,17 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                 icon: const Icon(Remix.file_copy_line),
                 label: const Text("复制链接"),
               ),
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  textStyle: const TextStyle(fontSize: 14),
+                ),
+                onPressed: controller.copyPlayUrl,
+                icon: const Icon(Remix.file_copy_line),
+                label: const Text("复制播放直链"),
+              ),
             ],
           ),
         ),
-        //buildBottomActions(context),
       ],
     );
   }
@@ -665,6 +673,17 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                   value: AppSettingsController.instance.chatBubbleStyle.value,
                   onChanged: (e) {
                     AppSettingsController.instance.setChatBubbleStyle(e);
+                  },
+                ),
+              ),
+              AppStyle.divider,
+              Obx(
+                () => SettingsSwitch(
+                  title: "播放器中显示SC",
+                  value:
+                      AppSettingsController.instance.playershowSuperChat.value,
+                  onChanged: (e) {
+                    AppSettingsController.instance.setPlayerShowSuperChat(e);
                   },
                 ),
               ),

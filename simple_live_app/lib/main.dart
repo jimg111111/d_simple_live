@@ -18,11 +18,13 @@ import 'package:simple_live_app/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/app/utils/listen_fourth_button.dart';
 import 'package:simple_live_app/models/db/follow_user.dart';
+import 'package:simple_live_app/models/db/follow_user_tag.dart';
 import 'package:simple_live_app/models/db/history.dart';
 import 'package:simple_live_app/modules/other/debug_log_page.dart';
 import 'package:simple_live_app/routes/app_pages.dart';
 import 'package:simple_live_app/routes/route_path.dart';
 import 'package:simple_live_app/services/bilibili_account_service.dart';
+import 'package:simple_live_app/services/douyin_account_service.dart';
 import 'package:simple_live_app/services/db_service.dart';
 import 'package:simple_live_app/services/follow_service.dart';
 import 'package:simple_live_app/services/local_storage_service.dart';
@@ -66,6 +68,7 @@ Future migrateData() async {
     "followuser",
     //旧版本写错成hostiry了
     "hostiry",
+    "followusertag",
     "localstorage",
     "danmushield",
   ];
@@ -116,6 +119,7 @@ Future initWindow() async {
 Future initServices() async {
   Hive.registerAdapter(FollowUserAdapter());
   Hive.registerAdapter(HistoryAdapter());
+  Hive.registerAdapter(FollowUserTagAdapter());
 
   //包信息
   Utils.packageInfo = await PackageInfo.fromPlatform();
@@ -127,6 +131,8 @@ Future initServices() async {
   Get.put(AppSettingsController());
 
   Get.put(BiliBiliAccountService());
+
+  Get.put(DouyinAccountService());
 
   Get.put(SyncService());
 
@@ -202,6 +208,8 @@ class MyApp extends StatelessWidget {
           Log.addDebugLog(text, (isError ?? false) ? Colors.red : Colors.grey);
           Log.writeLog(text, (isError ?? false) ? Level.error : Level.info);
         },
+        // 升级后Android页面过渡动画似乎有BUG
+        defaultTransition: Platform.isAndroid ? Transition.cupertino : null,
         //debugShowCheckedModeBanner: false,
         navigatorObservers: [FlutterSmartDialog.observer],
         builder: FlutterSmartDialog.init(
